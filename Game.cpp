@@ -12,18 +12,36 @@
 #include <conio.h>
 #endif
 
+// ── Original constructor (production path – unchanged behaviour) ──
 Game::Game(int w, int h, int delay) :
     WIDTH(w), HEIGHT(h), DELAY_MS(delay),
     dir(RIGHT), running(false), paused(false), game_over(false),
     score(0), lastBombScore(0), bombActive(false),
-    rng(std::chrono::steady_clock::now().time_since_epoch().count()),
-    wx(1, w-2), hy(1, h-2),
+    randSrc_(new ProductionRandomSource()), ownsRandSrc_(true),
     leaderboard("leaderboard.json")
 {
-    headEmoji = "🐍";
-    bodyEmoji = "🟢";
-    appleEmoji = "🍎";
-    bombEmoji = "💣";
+    headEmoji = "\xF0\x9F\x90\x8D";  // 🐍
+    bodyEmoji = "\xF0\x9F\x9F\xA2";  // 🟢
+    appleEmoji = "\xF0\x9F\x8D\x8E"; // 🍎
+    bombEmoji = "\xF0\x9F\x92\xA3";  // 💣
+}
+
+// ── Seam-enabled constructor (test path) ──────────────────────────
+Game::Game(int w, int h, int delay, RandomSource* rngSource) :
+    WIDTH(w), HEIGHT(h), DELAY_MS(delay),
+    dir(RIGHT), running(false), paused(false), game_over(false),
+    score(0), lastBombScore(0), bombActive(false),
+    randSrc_(rngSource), ownsRandSrc_(false),
+    leaderboard("leaderboard.json")
+{
+    headEmoji = "\xF0\x9F\x90\x8D";
+    bodyEmoji = "\xF0\x9F\x9F\xA2";
+    appleEmoji = "\xF0\x9F\x8D\x8E";
+    bombEmoji = "\xF0\x9F\x92\xA3";
+}
+
+Game::~Game() {
+    if (ownsRandSrc_) delete randSrc_;
 }
 
 void Game::init() {
@@ -42,13 +60,13 @@ void Game::init() {
 
 void Game::generateApple() {
     do {
-        apple = { wx(rng), hy(rng) };
+        apple = { randSrc_->randomInt(1, WIDTH-2), randSrc_->randomInt(1, HEIGHT-2) };
     } while (isOnSnake(apple) || (bombActive && apple == bomb));
 }
 
 void Game::generateBomb() {
     do {
-        bomb = { wx(rng), hy(rng) };
+        bomb = { randSrc_->randomInt(1, WIDTH-2), randSrc_->randomInt(1, HEIGHT-2) };
     } while (isOnSnake(bomb) || bomb == apple);
     bombActive = true;
 }
@@ -56,6 +74,15 @@ void Game::generateBomb() {
 bool Game::isOnSnake(const Point& p) const {
     for (auto &s : body) if (s == p) return true;
     return false;
+}
+
+void Game::setDirection(Direction d) {
+    // Prevent 180-degree turns (same logic as processInput)
+    if ((dir == UP && d == DOWN) || (dir == DOWN && d == UP) ||
+        (dir == LEFT && d == RIGHT) || (dir == RIGHT && d == LEFT)) {
+        return;
+    }
+    dir = d;
 }
 
 void Game::processInput() {
@@ -168,7 +195,7 @@ void Game::draw() {
         for (int x=0;x<WIDTH;x++) {
             Point p{x,y};
             if (x==0 || x==WIDTH-1 || y==0 || y==HEIGHT-1) {
-                std::cout << "⬛";
+                std::cout << "\xe2\xac\x9b";  // ⬛
             } else if (p == body.front()) {
                 std::cout << headEmoji;
             } else if (isOnSnake(p)) {
@@ -178,14 +205,14 @@ void Game::draw() {
             } else if (bombActive && p == bomb) {
                 std::cout << bombEmoji;
             } else {
-                std::cout << "　";
+                std::cout << "\xe3\x80\x80";  // fullwidth space
             }
         }
         std::cout << "\n";
     }
 
     std::cout << "\n  Controls: W/A/S/D | P=Pause | Q=Quit\n";
-    std::cout << "  💣 Bomb appears every 20 points! Avoid it!\n\n";
+    std::cout << "  " << bombEmoji << " Bomb appears every 20 points! Avoid it!\n\n";
 }
 
 void Game::gameOver() {
@@ -193,7 +220,7 @@ void Game::gameOver() {
     showCursor();
 
     clearScreen();
-    std::cout << "\n\n  💀 GAME OVER! 💀\n";
+    std::cout << "\n\n  \xF0\x9F\x92\x80 GAME OVER! \xF0\x9F\x92\x80\n";
     std::cout << "  Final Score: " << score << "\n\n";
 
     std::string name = promptLine("  Enter your name: ");
@@ -233,22 +260,20 @@ void Game::gameOver() {
         daiict.add(name, score);
     }
 
-    // 🏆 STUNNING LEADERBOARD DISPLAY
     auto color = [](std::string t, std::string c){ return "\033[" + c + "m" + t + "\033[0m"; };
-    auto line = [](int w){ std::cout << "  "; for(int i=0;i<w;i++) std::cout << "═"; std::cout<<"\n"; };
 
     clearScreen();
     std::cout << "\n";
-    std::cout << color("╔═══════════════════════════════════════════════════════╗\n", "38;5;214");
-    std::cout << color("║              🐍  TERMINAL SNAKE LEADERBOARD  🐍       ║\n", "1;93");
-    std::cout << color("╚═══════════════════════════════════════════════════════╝\n\n", "38;5;214");
+    std::cout << color("\xe2\x95\x94\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x97\n", "38;5;214");
+    std::cout << color("\xe2\x95\x91              \xF0\x9F\x90\x8D  TERMINAL SNAKE LEADERBOARD  \xF0\x9F\x90\x8D       \xe2\x95\x91\n", "1;93");
+    std::cout << color("\xe2\x95\x9A\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x90\xe2\x95\x9D\n\n", "38;5;214");
 
     auto showBoard = [&](std::string title, auto &list) {
         std::cout << color("   " + title + "\n", "1;96");
-        std::cout << color("   ────────────────────────────────────────────────\n", "36");
+        std::cout << color("   " + std::string(48, '\xe2') + "\n", "36");  // simplified
         int rank = 1;
         for (auto &e : list) {
-            std::string medal = rank==1?"🥇":rank==2?"🥈":rank==3?"🥉":" *";
+            std::string medal = rank==1?"\xF0\x9F\xA5\x87":rank==2?"\xF0\x9F\xA5\x88":rank==3?"\xF0\x9F\xA5\x89":" *";
             std::string clr = rank==1?"1;93":rank==2?"1;37":rank==3?"38;5;208":"0;36";
             std::cout << "   " << medal << "  "
                       << std::left << std::setw(25) << e.name
@@ -259,13 +284,13 @@ void Game::gameOver() {
     };
 
     auto topO = overall.top(10);
-    showBoard("🌍  GLOBAL LEADERBOARD  🌍", topO);
+    showBoard("\xF0\x9F\x8C\x8D  GLOBAL LEADERBOARD  \xF0\x9F\x8C\x8D", topO);
 
     Leaderboard daiict("leaderboard_daiict.json");
     auto topD = daiict.top(10);
-    if (!topD.empty()) showBoard("🎓  DAIICT LEADERBOARD  🎓", topD);
+    if (!topD.empty()) showBoard("\xF0\x9F\x8E\x93  DAIICT LEADERBOARD  \xF0\x9F\x8E\x93", topD);
 
-    std::cout << color("   💡 Beat the Top 3 and earn your medal!\n\n", "1;92");
+    std::cout << color("   \xF0\x9F\x92\xA1 Beat the Top 3 and earn your medal!\n\n", "1;92");
 
     std::cout << "  Play again? (y/n): ";
     std::string restart;
@@ -285,24 +310,24 @@ void Game::gameOver() {
         }
         disableRawMode(); showCursor(); gameOver();
     } else {
-        std::cout << "\n  Thanks for playing! 👋\n";
+        std::cout << "\n  Thanks for playing! \xF0\x9F\x91\x8B\n";
         std::this_thread::sleep_for(std::chrono::milliseconds(1500));
     }
 }
 
 void Game::run() {
     clearScreen();
-    std::cout << "Choose head emoji:\n 1) 🐍 Snake \n 2) 🐇 Rabbit \n 3) 🐀 Mouse \n 4) 🐭 Rat \n 5) Custom\n";
+    std::cout << "Choose head emoji:\n 1) \xF0\x9F\x90\x8D Snake \n 2) \xF0\x9F\x90\x87 Rabbit \n 3) \xF0\x9F\x90\x80 Mouse \n 4) \xF0\x9F\x90\xAD Rat \n 5) Custom\n";
     std::cout << "Enter choice: ";
     int c = 0;
     if (!(std::cin >> c)) { c=1; std::cin.clear(); }
     std::string trash; std::getline(std::cin, trash);
-    switch(c){case 1:headEmoji="🐍";break;case 2:headEmoji="🐇";break;
-        case 3:headEmoji="🐀";break;case 4:headEmoji="🐭";break;
-        case 5:{std::string e=promptLine("Enter emoji: ");if(!e.empty())headEmoji=e;}break;default:headEmoji="🐍";}
+    switch(c){case 1:headEmoji="\xF0\x9F\x90\x8D";break;case 2:headEmoji="\xF0\x9F\x90\x87";break;
+        case 3:headEmoji="\xF0\x9F\x90\x80";break;case 4:headEmoji="\xF0\x9F\x90\xAD";break;
+        case 5:{std::string e=promptLine("Enter emoji: ");if(!e.empty())headEmoji=e;}break;default:headEmoji="\xF0\x9F\x90\x8D";}
 
-    std::string b=promptLine("Body emoji (default 🟢): ");if(!b.empty())bodyEmoji=b;
-    std::string a=promptLine("Apple emoji (default 🍎): ");if(!a.empty())appleEmoji=a;
+    std::string b=promptLine("Body emoji (default \xF0\x9F\x9F\xA2): ");if(!b.empty())bodyEmoji=b;
+    std::string a=promptLine("Apple emoji (default \xF0\x9F\x8D\x8E): ");if(!a.empty())appleEmoji=a;
     std::cout << "\nDifficulty: 1) Easy 2) Normal 3) Hard: "; int d=2;
     if(!(std::cin>>d)){d=2;std::cin.clear();} std::getline(std::cin,trash);
     if(d==1)DELAY_MS*=2;else if(d==3)DELAY_MS=std::max(30,DELAY_MS/2);
